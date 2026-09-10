@@ -42,13 +42,21 @@ jobs:
 
       - name: Fetch clang-r416183b (uname-aligned)
         run: |
-          set -e
+          set -x
           cd "$KP"
           DST="prebuilts-master/clang/host/linux-x86/clang-r416183b"
           mkdir -p "$DST"
-          curl -L --retry 5 -o clang.tgz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz"
-          tar xzf clang.tgz -C "$DST"
+          URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz"
+          ok=0
+          for i in 1 2 3 4 5; do
+            rm -rf "${DST:?}"/* 2>/dev/null || true
+            if curl -L --fail --connect-timeout 30 --retry 3 -o clang.tgz "$URL" \
+               && tar xzf clang.tgz -C "$DST" \
+               && "$DST/bin/clang" --version >/dev/null 2>&1; then ok=1; break; fi
+            echo "clang fetch attempt $i failed; retry in 15s"; sleep 15
+          done
           rm -f clang.tgz
+          [ "$ok" = 1 ] || { echo "clang fetch FAILED after retries"; exit 1; }
           echo "PATH=$KP/$DST/bin:$PATH" >> "$GITHUB_ENV"
           "$DST/bin/clang" --version | head -1
 
