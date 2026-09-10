@@ -86,7 +86,8 @@ jobs:
           ./scripts/config --file out/.config -e KSU $SUSFS_CFG \
             -d SECURITY_DEFEX -d PROCA -d PROCA_GKI_10 -d FIVE -d FIVE_GKI_10 -d LOCALVERSION_AUTO \
             -d UH -d RKP -d KDP -d KDP_CRED -d KDP_NS -d KDP_TEST -d RKP_CFP -d RKP_CFP_JOPP -d FASTUH_RKP \
-            -d UH_RKP -d SECURITY_DSMS -d PROCA_S_OS -d FIVE_PA_FEATURE || true
+            -d UH_RKP -d SECURITY_DSMS -d PROCA_S_OS -d FIVE_PA_FEATURE \
+            -d LTO_CLANG -d LTO_CLANG_THIN -d LTO_CLANG_FULL -e LTO_NONE -d CFI_CLANG -d SHADOW_CALL_STACK || true
           $MK olddefconfig
           echo "--- effective KSU/DEFEX/SUSFS ---"; grep -E "CONFIG_KSU|DEFEX|SUSFS|LOCALVERSION_AUTO" out/.config | head -30
           $MK Image 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
