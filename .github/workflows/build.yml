@@ -2,6 +2,11 @@ name: build
 
 on:
   workflow_dispatch:
+    inputs:
+      susfs:
+        description: "integrate susfs"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -53,12 +58,17 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/YuzakiKokuban/ReSukiSU/main/kernel/setup.sh" | bash
           echo "--- ksu driver linked? ---"; ls -la common/drivers/kernelsu 2>/dev/null || echo "NO KSU DRIVER"
           grep -n kernelsu common/drivers/Makefile common/drivers/Kconfig || true
-          git clone --depth=1 https://github.com/ShirkNeko/susfs4ksu.git -b gki-android12-5.10 susfs4ksu
-          cd common
-          cp -v ../susfs4ksu/kernel_patches/fs/*.c fs/ 2>/dev/null || true
-          cp -v ../susfs4ksu/kernel_patches/include/linux/*.h include/linux/ 2>/dev/null || true
-          patch -p1 --forward --fuzz=3 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch \
-            || echo "WARN: susfs base patch had rejects"
+          if [ "${{ inputs.susfs }}" = "true" ]; then
+            git clone --depth=1 https://github.com/ShirkNeko/susfs4ksu.git -b gki-android12-5.10 susfs4ksu
+            cd common
+            cp -v ../susfs4ksu/kernel_patches/fs/*.c fs/ 2>/dev/null || true
+            cp -v ../susfs4ksu/kernel_patches/include/linux/*.h include/linux/ 2>/dev/null || true
+            patch -p1 --forward --fuzz=3 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch \
+              || echo "WARN: susfs base patch had rejects"
+            python3 "$GITHUB_WORKSPACE/patches/fix_namespace.py" fs/namespace.c
+          else
+            echo "susfs SKIPPED (KSU-only)"
+          fi
 
       - name: Build (raw make, clang-r416183b)
         env:
@@ -70,11 +80,9 @@ jobs:
           cd "$KP/common"
           MK="make -j$(nproc) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_COMPAT=arm-linux-gnueabi-"
           $MK gki_defconfig
-          ./scripts/config --file out/.config \
-            -e KSU -e KSU_SUSFS \
-            -e KSU_SUSFS_SUS_PATH -e KSU_SUSFS_SUS_MOUNT -e KSU_SUSFS_SUS_KSTAT \
-            -e KSU_SUSFS_TRY_UMOUNT -e KSU_SUSFS_SPOOF_UNAME \
-            -e KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS -e KSU_SUSFS_SPOOF_PROC_CMDLINE -e KSU_SUSFS_OPEN_REDIRECT \
+          SUSFS_CFG=""
+          [ "${{ inputs.susfs }}" = "true" ] && SUSFS_CFG="-e KSU_SUSFS -e KSU_SUSFS_SUS_PATH -e KSU_SUSFS_SUS_MOUNT -e KSU_SUSFS_SUS_KSTAT -e KSU_SUSFS_TRY_UMOUNT -e KSU_SUSFS_SPOOF_UNAME -e KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS -e KSU_SUSFS_SPOOF_PROC_CMDLINE -e KSU_SUSFS_OPEN_REDIRECT"
+          ./scripts/config --file out/.config -e KSU $SUSFS_CFG \
             -d SECURITY_DEFEX -d PROCA -d PROCA_GKI_10 -d FIVE -d FIVE_GKI_10 -d LOCALVERSION_AUTO || true
           $MK olddefconfig
           echo "--- effective KSU/DEFEX/SUSFS ---"; grep -E "CONFIG_KSU|DEFEX|SUSFS|LOCALVERSION_AUTO" out/.config | head -30
