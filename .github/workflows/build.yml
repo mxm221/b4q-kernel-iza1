@@ -84,7 +84,9 @@ jobs:
           SUSFS_CFG=""
           [ "${{ inputs.susfs }}" = "true" ] && SUSFS_CFG="-e KSU_SUSFS -e KSU_SUSFS_SUS_PATH -e KSU_SUSFS_SUS_MOUNT -e KSU_SUSFS_SUS_KSTAT -e KSU_SUSFS_TRY_UMOUNT -e KSU_SUSFS_SPOOF_UNAME -e KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS -e KSU_SUSFS_SPOOF_PROC_CMDLINE -e KSU_SUSFS_OPEN_REDIRECT"
           ./scripts/config --file out/.config -e KSU $SUSFS_CFG \
-            -d SECURITY_DEFEX -d PROCA -d PROCA_GKI_10 -d FIVE -d FIVE_GKI_10 -d LOCALVERSION_AUTO || true
+            -d SECURITY_DEFEX -d PROCA -d PROCA_GKI_10 -d FIVE -d FIVE_GKI_10 -d LOCALVERSION_AUTO \
+            -d UH -d RKP -d KDP -d KDP_CRED -d KDP_NS -d KDP_TEST -d RKP_CFP -d RKP_CFP_JOPP -d FASTUH_RKP \
+            -d UH_RKP -d SECURITY_DSMS -d PROCA_S_OS -d FIVE_PA_FEATURE || true
           $MK olddefconfig
           echo "--- effective KSU/DEFEX/SUSFS ---"; grep -E "CONFIG_KSU|DEFEX|SUSFS|LOCALVERSION_AUTO" out/.config | head -30
           $MK Image 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
