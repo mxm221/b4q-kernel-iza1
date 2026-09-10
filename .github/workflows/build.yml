@@ -2,11 +2,9 @@ name: build
 
 on:
   workflow_dispatch:
-    inputs:
-      align_uname:
-        description: "force stock uname suffix"
-        type: boolean
-        default: true
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -17,7 +15,6 @@ jobs:
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
-          sudo docker image prune -a -f 2>/dev/null || true
           df -h
 
       - name: Install deps
@@ -26,101 +23,79 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             bc bison flex build-essential libssl-dev libelf-dev \
             python3 python-is-python3 lz4 zip unzip cpio rsync ccache \
-            device-tree-compiler curl git wget
+            device-tree-compiler curl git
 
       - name: Download kernel source (release asset src)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release download src -R "${{ github.repository }}" -p Kernel.tar.gz
-          mkdir -p work && tar xzf Kernel.tar.gz -C work
-          rm -f Kernel.tar.gz
+          mkdir -p work && tar xzf Kernel.tar.gz -C work && rm -f Kernel.tar.gz
           echo "KP=$GITHUB_WORKSPACE/work/kernel_platform" >> "$GITHUB_ENV"
-          echo "--- version ---"; sed -n '1,4p' work/kernel_platform/common/Makefile
+          sed -n '1,4p' work/kernel_platform/common/Makefile
 
       - name: Fetch clang-r416183b (uname-aligned)
         run: |
-          set -x
+          set -e
           cd "$KP"
           DST="prebuilts-master/clang/host/linux-x86/clang-r416183b"
           mkdir -p "$DST"
-          URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz"
-          curl -L --retry 5 -o clang.tgz "$URL"
+          curl -L --retry 5 -o clang.tgz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz"
           tar xzf clang.tgz -C "$DST"
           rm -f clang.tgz
-          "$DST/bin/clang" --version
+          echo "PATH=$KP/$DST/bin:$PATH" >> "$GITHUB_ENV"
+          "$DST/bin/clang" --version | head -1
 
-      - name: Integrate SukiSU-Ultra (ReSukiSU) + SUSFS
+      - name: Integrate ReSukiSU + SUSFS
         run: |
           set -x
           cd "$KP"
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main || \
-          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
-          echo "--- KSU version ---"; cat KernelSU*/kernel/Makefile 2>/dev/null | grep -m1 -i version || true
-          # SUSFS patches for gki-android12-5.10
-          ( git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android12-5.10 susfs4ksu \
-            || git clone --depth=1 https://github.com/ShirkNeko/susfs4ksu.git -b gki-android12-5.10 susfs4ksu )
+          curl -LSs "https://raw.githubusercontent.com/YuzakiKokuban/ReSukiSU/main/kernel/setup.sh" | bash
+          echo "--- ksu driver linked? ---"; ls -la common/drivers/kernelsu 2>/dev/null || echo "NO KSU DRIVER"
+          grep -n kernelsu common/drivers/Makefile common/drivers/Kconfig || true
+          git clone --depth=1 https://github.com/ShirkNeko/susfs4ksu.git -b gki-android12-5.10 susfs4ksu
           cd common
           cp -v ../susfs4ksu/kernel_patches/fs/*.c fs/ 2>/dev/null || true
           cp -v ../susfs4ksu/kernel_patches/include/linux/*.h include/linux/ 2>/dev/null || true
-          P="../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch"
-          [ -f "$P" ] && (patch -p1 --forward --fuzz=3 < "$P" || echo "susfs base patch had rejects")
+          patch -p1 --forward --fuzz=3 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch \
+            || echo "WARN: susfs base patch had rejects"
 
-      - name: Configure (KSU/SUSFS on, DEFEX off, uname)
-        run: |
-          set -x
-          cd "$KP/common"
-          CFG=arch/arm64/configs/gki_defconfig
-          ./scripts/config --file "$CFG" \
-            -e KSU -e KSU_SUSFS \
-            -e KSU_SUSFS_SUS_PATH -e KSU_SUSFS_SUS_MOUNT -e KSU_SUSFS_SUS_KSTAT \
-            -e KSU_SUSFS_TRY_UMOUNT -e KSU_SUSFS_SPOOF_UNAME -e KSU_SUSFS_ENABLE_LOG \
-            -e KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS -e KSU_SUSFS_SPOOF_PROC_CMDLINE -e KSU_SUSFS_OPEN_REDIRECT \
-            -d SECURITY_DEFEX -d PROCA -d PROCA_GKI_10 -d FIVE -d FIVE_GKI_10 \
-            -d LOCALVERSION_AUTO || true
-          # disable KMI/ABI trimming (KSU adds symbols)
-          for f in build.config.gki build.config.gki.aarch64; do
-            [ -f "$f" ] && sed -i -E 's/^(TRIM_NONLISTED_KMI=).*/\1/; s/^(KMI_SYMBOL_LIST_STRICT_MODE=).*/\1/' "$f"
-          done
-          if [ "${{ inputs.align_uname }}" = "true" ]; then
-            printf -- '-android12-9-31998796-abF721NKSS6IZA1' > localversion
-          fi
-          echo "--- defconfig tail ---"; tail -20 "$CFG"
-
-      - name: Build (clang-r416183b, gki aarch64)
+      - name: Build (raw make, clang-r416183b)
         env:
           KBUILD_BUILD_USER: build-user
           KBUILD_BUILD_HOST: build-host
           KBUILD_BUILD_TIMESTAMP: "Thu Jan  8 08:21:45 UTC 2026"
         run: |
           set -x
-          cd "$KP"
-          export LTO=thin KMI_SYMBOL_LIST_STRICT_MODE= TRIM_NONLISTED_KMI=
-          BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh -j"$(nproc)" 2>&1 | tee "$GITHUB_WORKSPACE/build.log" || true
-          echo "=== find Image ==="; find "$GITHUB_WORKSPACE/work" \( -name 'Image' -o -name 'Image.lz4' \) 2>/dev/null | tee "$GITHUB_WORKSPACE/image_paths.txt"
+          cd "$KP/common"
+          MK="make -j$(nproc) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1"
+          $MK gki_defconfig
+          ./scripts/config --file out/.config \
+            -e KSU -e KSU_SUSFS \
+            -e KSU_SUSFS_SUS_PATH -e KSU_SUSFS_SUS_MOUNT -e KSU_SUSFS_SUS_KSTAT \
+            -e KSU_SUSFS_TRY_UMOUNT -e KSU_SUSFS_SPOOF_UNAME \
+            -e KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS -e KSU_SUSFS_SPOOF_PROC_CMDLINE -e KSU_SUSFS_OPEN_REDIRECT \
+            -d SECURITY_DEFEX -d PROCA -d PROCA_GKI_10 -d FIVE -d FIVE_GKI_10 -d LOCALVERSION_AUTO || true
+          $MK olddefconfig
+          echo "--- effective KSU/DEFEX/SUSFS ---"; grep -E "CONFIG_KSU|DEFEX|SUSFS|LOCALVERSION_AUTO" out/.config | head -30
+          $MK Image 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+          echo "--- boot out ---"; ls -la out/arch/arm64/boot/ 2>/dev/null || true
 
-      - name: Verify uname
+      - name: Verify + publish Image to release
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          IMG=$(find "$GITHUB_WORKSPACE/work" -name Image | head -1)
-          if [ -n "$IMG" ]; then echo "IMAGE: $IMG"; strings "$IMG" | grep -m1 "Linux version" | tee "$GITHUB_WORKSPACE/uname.txt"; else echo "NO IMAGE BUILT"; fi
-
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: logs
-          path: |
-            build.log
-            image_paths.txt
-            uname.txt
-          if-no-files-found: warn
-
-      - name: Upload Image
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: kernel-image
-          path: |
-            work/**/dist/Image*
-            work/**/arch/arm64/boot/Image*
-          if-no-files-found: warn
+          IMG="$KP/common/out/arch/arm64/boot/Image"
+          if [ -f "$IMG" ]; then
+            echo "=== BUILT uname ==="; strings "$IMG" | grep -m1 "Linux version" || true
+            gh release view out -R "${{ github.repository }}" >/dev/null 2>&1 || \
+              gh release create out -R "${{ github.repository }}" -t "kernel Image" -n "b4q IZA1 self-built Image"
+            cp "$IMG" Image
+            gh release upload out Image -R "${{ github.repository }}" --clobber
+            echo "OK: Image published to release 'out'"
+          else
+            echo "NO IMAGE — build failed. Tail of build.log:"
+            tail -80 "$GITHUB_WORKSPACE/build.log" 2>/dev/null || true
+            exit 1
+          fi
