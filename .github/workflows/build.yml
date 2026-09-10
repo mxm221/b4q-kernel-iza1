@@ -36,6 +36,7 @@ jobs:
         run: |
           gh release download src -R "${{ github.repository }}" -p Kernel.tar.gz
           mkdir -p work && tar xzf Kernel.tar.gz -C work && rm -f Kernel.tar.gz
+          chmod -R u+w work || true
           echo "KP=$GITHUB_WORKSPACE/work/kernel_platform" >> "$GITHUB_ENV"
           sed -n '1,4p' work/kernel_platform/common/Makefile
 

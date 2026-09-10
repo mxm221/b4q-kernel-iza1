@@ -3,9 +3,10 @@
 # Samsung's copy_mnt_ns() has an extra KDP copy_tree() variant that breaks the
 # fuzzy patch context, so `copy_flags |= CL_COPY_MNT_NS;` lands out of scope.
 # Remove any misplaced insert and re-insert it right after CL_SHARED_TO_SLAVE.
-import sys
+import sys, os
 
 f = sys.argv[1]
+os.chmod(f, 0o644)
 s = open(f).read()
 line = "\tcopy_flags |= CL_COPY_MNT_NS;\n"
 s = s.replace(line, "")  # undo misplacement(s)
