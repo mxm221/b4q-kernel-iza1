@@ -68,7 +68,7 @@ jobs:
         run: |
           set -x
           cd "$KP/common"
-          MK="make -j$(nproc) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1"
+          MK="make -j$(nproc) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_COMPAT=arm-linux-gnueabi-"
           $MK gki_defconfig
           ./scripts/config --file out/.config \
             -e KSU -e KSU_SUSFS \
