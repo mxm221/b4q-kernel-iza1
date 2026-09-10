@@ -79,6 +79,9 @@ jobs:
         run: |
           set -x
           cd "$KP/common"
+          # uname alignment: kill git-detected "+" and pin the exact stock localversion
+          rm -rf "$GITHUB_WORKSPACE/.git" || true
+          printf -- '-android12-9-31998796-abF721NKSS6IZA1' > localversion
           MK="make -j$(nproc) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_COMPAT=arm-linux-gnueabi-"
           $MK gki_defconfig
           SUSFS_CFG=""
