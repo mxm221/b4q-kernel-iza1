@@ -69,6 +69,8 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/YuzakiKokuban/ReSukiSU/main/kernel/setup.sh" | bash
           echo "--- ksu driver linked? ---"; ls -la common/drivers/kernelsu 2>/dev/null || echo "NO KSU DRIVER"
           grep -n kernelsu common/drivers/Makefile common/drivers/Kconfig || true
+          # 通电自启 (auto-boot): charger->normal in kernel cmdline
+          python3 "$GITHUB_WORKSPACE/patches/autoboot.py" common/init/main.c
           if [ "${{ inputs.susfs }}" = "true" ]; then
             git clone --depth=1 https://github.com/ShirkNeko/susfs4ksu.git -b gki-android12-5.10 susfs4ksu
             cd common
