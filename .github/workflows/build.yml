@@ -17,10 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Free disk space
+      - name: Free disk space + swap
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
-          df -h
+          sudo fallocate -l 12G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=12288
+          sudo chmod 600 /mnt/swapfile; sudo mkswap /mnt/swapfile; sudo swapon /mnt/swapfile
+          free -h; df -h
 
       - name: Install deps
         run: |
@@ -97,8 +99,8 @@ jobs:
           ./scripts/config --file out/.config -e KSU $SUSFS_CFG \
             -d SECURITY_DEFEX -d PROCA -d PROCA_GKI_10 -d FIVE -d FIVE_GKI_10 -d LOCALVERSION_AUTO \
             -d UH -d RKP -d KDP -d KDP_CRED -d KDP_NS -d KDP_TEST -d RKP_CFP -d RKP_CFP_JOPP -d FASTUH_RKP \
-            -d UH_RKP -d SECURITY_DSMS -d PROCA_S_OS -d FIVE_PA_FEATURE \
-            -d LTO_CLANG -d LTO_CLANG_THIN -d LTO_CLANG_FULL -e LTO_NONE -d CFI_CLANG -d SHADOW_CALL_STACK || true
+            -d UH_RKP -d SECURITY_DSMS -d PROCA_S_OS -d FIVE_PA_FEATURE || true
+          # KEEP LTO_CLANG_THIN + CFI_CLANG + SHADOW_CALL_STACK ON (stock KMI — vendor modules need it)
           $MK olddefconfig
           echo "--- effective KSU/DEFEX/SUSFS ---"; grep -E "CONFIG_KSU|DEFEX|SUSFS|LOCALVERSION_AUTO" out/.config | head -30
           $MK Image 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
