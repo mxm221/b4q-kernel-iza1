@@ -11,9 +11,9 @@ s = open(f).read()
 if "auto-boot: force normal boot" in s:
     print("[autoboot] already applied")
     sys.exit(0)
-anchor = "static void __init setup_command_line(char *command_line)\n{\n"
+anchor = "\tsize_t len, xlen = 0, ilen = 0;\n"
 inject = (
-    "static void __init setup_command_line(char *command_line)\n{\n"
+    "\tsize_t len, xlen = 0, ilen = 0;\n"
     "\t/* auto-boot: force normal boot, never LPM charger mode */\n"
     "\t{\n"
     "\t\tchar *_abm = strstr(boot_command_line, \"androidboot.mode=charger\");\n"
