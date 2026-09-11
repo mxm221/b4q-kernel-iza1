@@ -77,6 +77,7 @@ jobs:
             patch -p1 --forward --fuzz=3 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch \
               || echo "WARN: susfs base patch had rejects"
             python3 "$GITHUB_WORKSPACE/patches/fix_namespace.py" fs/namespace.c
+            python3 "$GITHUB_WORKSPACE/patches/fix_statfs.py" fs/statfs.c
           else
             echo "susfs SKIPPED (KSU-only)"
           fi
