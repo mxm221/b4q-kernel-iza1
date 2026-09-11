@@ -78,6 +78,7 @@ jobs:
               || echo "WARN: susfs base patch had rejects"
             python3 "$GITHUB_WORKSPACE/patches/fix_namespace.py" fs/namespace.c
             python3 "$GITHUB_WORKSPACE/patches/fix_statfs.py" fs/statfs.c
+            python3 "$GITHUB_WORKSPACE/patches/fix_susfs.py" fs/susfs.c
           else
             echo "susfs SKIPPED (KSU-only)"
           fi
